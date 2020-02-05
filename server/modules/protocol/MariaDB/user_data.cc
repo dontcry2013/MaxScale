@@ -84,6 +84,7 @@ void MariaDBUserManager::start()
     m_updater_thread = std::thread([this] {
                                        updater_thread_function();
                                    });
+    m_thread_started.wait();
 }
 
 void MariaDBUserManager::stop()
@@ -128,14 +129,14 @@ void MariaDBUserManager::updater_thread_function()
     using mxb::Clock;
 
     // Minimum wait between update loops. User accounts should not be changing continuously.
-    const std::chrono::milliseconds default_min_interval(500);
+    const std::chrono::seconds default_min_interval(1);
 
     // Default value for scheduled updates. Cannot set too far in the future, as the cv wait_until bugs and
     // doesn't wait.
     const std::chrono::hours default_max_interval(24);
 
-    // Do the first update immediately.
-    TimePoint last_update = Clock::now() - default_min_interval;
+    bool first_iteration = true;
+    TimePoint last_update = Clock::now();
 
     auto should_stop_running = [this]() {
             return !m_keep_running.load(acquire);
@@ -170,15 +171,13 @@ void MariaDBUserManager::updater_thread_function()
         bool throttling_on = (m_successful_loads > throttling_start_loads
                               || m_consecutive_failed_loads > user_load_fail_limit);
 
-        // Calculate the earliest allowed time for next update.
+        // Calculate the earliest allowed time for next update. If throttling is not on, next update can
+        // happen immediately.
         TimePoint next_possible_update = last_update;
-        if (throttling_on && min_refresh_interval > 0)
+        if (throttling_on)
         {
-            next_possible_update += Duration((double)min_refresh_interval);
-        }
-        else
-        {
-            next_possible_update += default_min_interval;
+            next_possible_update += (min_refresh_interval > 0) ? Duration((double)min_refresh_interval) :
+                default_min_interval;
         }
 
         // Calculate the time for the next scheduled update.
@@ -200,6 +199,12 @@ void MariaDBUserManager::updater_thread_function()
         m_notifier.wait_until(lock, next_possible_update, should_stop_running);
 
         m_can_update.store(true, release);
+        if (first_iteration)
+        {
+            m_thread_started.post();
+            first_iteration = false;
+        }
+
         // Wait until "next_scheduled_update", or until update requested or thread stop.
         m_notifier.wait_until(lock, next_scheduled_update, should_stop_waiting);
         lock.unlock();
