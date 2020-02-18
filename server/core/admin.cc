@@ -385,11 +385,29 @@ int Client::process(string url, string method, const char* upload_data, size_t* 
                                         (void*)data.c_str(),
                                         MHD_RESPMEM_MUST_COPY);
 
-    const Headers& headers = reply.get_headers();
+    auto headers = reply.get_headers();
 
     for (Headers::const_iterator it = headers.begin(); it != headers.end(); it++)
     {
         MHD_add_response_header(response, it->first.c_str(), it->second.c_str());
+    }
+
+    if (headers.count("Origin"))
+    {
+        MHD_add_response_header(response, "Access-Control-Allow-Origin", headers["Origin"].c_str());
+        MHD_add_response_header(response, "Vary", "Origin");
+
+        if (headers.count("Access-Control-Request-Headers"))
+        {
+            MHD_add_response_header(response, "Access-Control-Allow-Headers",
+                                    headers["Access-Control-Request-Headers"].c_str());
+        }
+
+        if (headers.count("Access-Control-Request-Method"))
+        {
+            MHD_add_response_header(response, "Access-Control-Allow-Methods",
+                                    headers["Access-Control-Request-Method"].c_str());
+        }
     }
 
     int rval = MHD_queue_response(m_connection, reply.get_code(), response);
