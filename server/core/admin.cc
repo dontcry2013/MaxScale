@@ -350,19 +350,27 @@ int Client::process(string url, string method, const char* upload_data, size_t* 
     string data;
 
     std::string path = get_datadir();
-    path += "/gui/" + request.uri_segment(0, request.uri_part_count());
+    std::string requested_file = request.uri_segment(0, request.uri_part_count());
+    std::string effective_file = requested_file.empty() ? "index.html" : requested_file;
+    std::string effective_path = (string)get_datadir() + "/gui/" + effective_file;
+    auto effective_pathz = effective_path.c_str();
+    MXB_DEBUG("Client asked for file '%s', trying to serve file '%s'.",
+        requested_file.c_str(), effective_pathz);
 
-    if (access(path.c_str(), R_OK) == 0)
+    if (access(effective_pathz, R_OK) == 0)
     {
-        data = get_file(path);
+        MXB_DEBUG("File '%s' found, trying to open.", effective_pathz);
+        data = get_file(effective_path);
 
         if (!data.empty())
         {
+            MXB_DEBUG("File '%s' read, sending contents.", effective_pathz);
             reply = HttpResponse(MHD_HTTP_OK);
         }
     }
     else
     {
+        MXB_DEBUG("File '%s' not found, answering as normal rest-api call.", effective_pathz);
         reply = resource_handle_request(request);
         json_t* js = reply.get_response();
 
