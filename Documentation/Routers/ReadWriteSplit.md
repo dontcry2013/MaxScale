@@ -598,6 +598,45 @@ modifications done by the client itself.
   timeout. With Galera this is not a serious issue as it, by nature, is a
   mostly-synchronous replication mechanism.
 
+The possible values for this parameter are:
+
+* `none`
+
+  * Read causality is disabled.
+
+* `local`
+
+  * Writes are locally visible. Writes are guaranteed to be visible only to the
+    connection that does it. Unrelated modifications done by other connections
+    are not visible.
+
+* `global`
+
+  * Writes are globally visible. If one connection writes a value, all
+    connections to the same service will see it. In general this mode is slower
+    than the `local` mode due to the extra synchronization it has to do. This
+    guarantees global happens-before ordering of reads when all transactions are
+    inside a single GTID domain. Multi-domain use of causal_reads can cause
+    non-causal reads to occur which is why it is highly recommended to avoid
+    this when the global causal reads mode is used.
+
+* `fast`
+
+  * This mode is similar to the `local` mode where it will only affect the
+    connection that does the write but where the `local` mode waits for a slave
+    server to catch up, the `fast` mode will only use servers that are known to
+    have replicated the write. This means that if no slave has replicated the
+    write, the master where the write was done will be used. The value of
+    `causal_reads_timeout` is ignored in this mode. Currently the replication
+    state is only updated by the mariadbmon monitor whenever the servers are
+    monitored. This means that a smaller `monitor_interval` provides faster
+    replication state updates and possibly better overall usage of servers.
+
+Before MaxScale 2.5.0, the `causal_reads` parameter was a boolean
+parameter. False values translated to `none` and true values translated to
+`local`. The use of boolean parameters is deprecated but still accepted in
+MaxScale 2.5.0.
+
 A practical example can be given by the following set of SQL commands executed
 with `autocommit=1`.
 
@@ -649,39 +688,6 @@ is provided, the value is interpreted as seconds in MaxScale 2.4. In subsequent
 versions a value without a unit may be rejected. Note that since the granularity
 of the timeout is seconds, a timeout specified in milliseconds will be rejected,
 even if the duration is longer than a second.
-
-### `causal_reads_mode`
-
-This parameter controls at which level the causality between reads and writes is
-applied. The parameter was added in MaxScale 2.5.0 and is set to `local` by
-default.
-
-The possible values for this parameter are:
-
-* `local`
-
-  * Writes are locally visible. Writes are guaranteed to be visible only to the
-    connection that does it. Unrelated modifications done by other connections
-    are not visible.
-
-* `global`
-
-  * Writes are globally visible. If one connection writes a value, all
-    connections to the same service will see it. In general this mode is slower
-    than the `local` mode due to the extra synchronization it has to do. This
-    guarantees global happens-before ordering of reads when all transactions are
-    inside a single GTID domain. Multi-domain use of causal_reads can cause
-    non-causal reads to occur which is why it is highly recommended to avoid
-    this when the global causal reads mode is used.
-
-* `fast`
-
-  * This mode is similar to the `local` mode where it will only affect the
-    connection that does the write but where the `local` mode waits for a slave
-    server to catch up, the `fast` mode will only use servers that are known to
-    have replicated the write. This means that if no slave has replicated the
-    write, the master where the write was done will be used. The value of
-    `causal_reads_timeout` is ignored in this mode.
 
 ### `lazy_connect`
 
